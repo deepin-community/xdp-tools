@@ -1,4 +1,39 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/default.mk
+export DEB_BUILD_MAINT_OPTIONS=hardening=+all
+export PREFIX=/usr
+export LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)
+export FORCE_SYSTEM_LIBBPF=1
+export PRODUCTION=1
+# For asm/types.h
+export BPF_CFLAGS=-Wno-visibility -I/usr/include/$(DEB_HOST_MULTIARCH)
+ifneq (,$(filter $(DEB_HOST_MULTIARCH), mips64el-linux-gnuabi64 mipsel-linux-gnu))
+export BPF_CFLAGS+= -D__MIPSEL__=1
+endif
+
+ifneq (,$(findstring terse,$(DEB_BUILD_OPTIONS)))
+export VERBOSE=0
+else
+export VERBOSE=1
+endif
+
 %:
 	dh $@
+
+# Tests require root and break the testbed
+override_dh_auto_test:
+
+execute_before_dh_auto_build:
+	# On Ubuntu, the `bpftool` in path is a shell wrapper pointing at
+	# the binary corresponding to runtime kernel version.
+	#
+	# We do not know the kernel version being used on the system building
+	# this package, and for the build we only need the tool to generate
+	# skeleton code.
+	#
+	# If /usr/lib/linux-tools-*/bpftool exists, locate the most recent
+	# version and point to that, otherwise `bpftool` from PATH will be
+	# used.
+	for _bpftool in $(ls /usr/lib/linux-tools-*/bpftool); do true;done
+	if [ -x "$_bpftool" ]; then export BPFTOOL=$_bpftool; fi
